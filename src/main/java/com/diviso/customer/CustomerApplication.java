@@ -6,55 +6,54 @@ import java.util.Properties;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.Serdes;
-import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.Consumed;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
-import org.apache.kafka.streams.kstream.GlobalKTable;
 import org.apache.kafka.streams.kstream.KStream;
-import org.apache.kafka.streams.kstream.Materialized;
-import org.apache.kafka.streams.kstream.Produced;
-import org.apache.kafka.streams.state.KeyValueStore;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+import io.confluent.kafka.serializers.AbstractKafkaAvroSerDeConfig;
+import io.confluent.kafka.streams.serdes.avro.SpecificAvroSerde;
+import com.diviso.customer.avro.*;
 
 @SpringBootApplication
 public class CustomerApplication {
 
-	static final String bootstrapServers = "localhost:9092";
-	static final String schemaRegistryUrl = "http://localhost:8081";
+	public static final String CUSTOMER_REGISTRATION_TOPIC = "customer-registration";
+	public static final String BOOTSTRAP_SERVER_URL = "localhost:9092";
+	public static final String SCHEMA_REGISTRY_URL = "http://localhost:8081";
+	public static final String STATE_DIR = "/tmp/gatewayapp";
 
 	public static void main(String[] args) {
-
-		final KafkaStreams streams = createStreams(bootstrapServers, schemaRegistryUrl,
-				"/tmp/kafka-streams-global-tables");
-
+	
 		SpringApplication.run(CustomerApplication.class, args);
 
+		final KafkaStreams streams = createStreams();
+		streams.cleanUp();
+		streams.start();
+		Runtime.getRuntime().addShutdownHook(new Thread(streams::close));
+
 	}
 
-	public static KafkaStreams createStreams(final String bootstrapServers, final String schemaRegistryUrl,
-			final String stateDir) {
+	public static KafkaStreams createStreams() {
 
 		final Properties streamsConfiguration = new Properties();
-		// Give the Streams application a unique name. The name must be unique
-		// in the Kafka cluster
-		// against which the application is run.
-		streamsConfiguration.put(StreamsConfig.APPLICATION_ID_CONFIG, "global-tables-example");
-		streamsConfiguration.put(StreamsConfig.CLIENT_ID_CONFIG, "global-tables-example-client");
-		// Where to find Kafka broker(s).
-		streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-		streamsConfiguration.put(StreamsConfig.STATE_DIR_CONFIG, stateDir);
-		// Set to earliest so we don't miss any data that arrived in the topics
-		// before the process
-		// started
-		streamsConfiguration.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-		 final StreamsBuilder builder = new StreamsBuilder();
+		streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVER_URL);
+		streamsConfiguration.put(StreamsConfig.APPLICATION_ID_CONFIG, "customer-service");
+		streamsConfiguration.put(StreamsConfig.STATE_DIR_CONFIG, STATE_DIR);
 
-		return new KafkaStreams(builder.build(), new StreamsConfig(streamsConfiguration));
+		final StreamsBuilder builder = new StreamsBuilder();
+
+		final SpecificAvroSerde<customer> customerSerde = new SpecificAvroSerde<>();
+
+		final Map<String, String> serdeConfig = Collections
+				.singletonMap(AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG, SCHEMA_REGISTRY_URL);
+		final KStream<Long, customer> customerStream = builder.stream(CUSTOMER_REGISTRATION_TOPIC,
+				Consumed.with(Serdes.Long(), customerSerde));
+		customerSerde.configure(serdeConfig, true);
+		return new KafkaStreams(builder.build(), streamsConfiguration);
+
 	}
 }
-
-
