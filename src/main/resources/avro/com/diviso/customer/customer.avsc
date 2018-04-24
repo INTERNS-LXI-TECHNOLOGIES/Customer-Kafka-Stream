@@ -1,0 +1,11 @@
+{"namespace": "com.diviso.customer.avro",
+ "type": "record",
+ "name": "customer",
+ "fields": [
+     {"name": "id", "type": "long"},
+     {"name": "name", "type": "string"},
+     {"name": "contactNo", "type": "long"},
+     {"name": "address", "type": "string"}
+     
+ ]
+}
